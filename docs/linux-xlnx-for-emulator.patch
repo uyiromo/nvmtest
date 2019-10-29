@@ -1,0 +1,35 @@
+Copyright (C) 2019 Yu OMORI
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License version 2 as
+published by the Free Software Foundation.
+
+
+This patch enables to treat DRAM on FPGA as CACHEABLE.
+The Linux kernel that this patch is applied treats physical address
+space assigned to FPGA as cacheable region without special flags.
+To treat that address range as non-cacheble, O_SYNC must be added to
+open() system call.
+
+
+diff --git a/arch/arm/mm/mmu.c b/arch/arm/mm/mmu.c
+index e46a6a4..a1d078a 100644
+--- a/arch/arm/mm/mmu.c
++++ b/arch/arm/mm/mmu.c
+@@ -708,7 +708,15 @@ static void __init build_mem_type_table(void)
+ pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
+ 			      unsigned long size, pgprot_t vma_prot)
+ {
+-	if (!pfn_valid(pfn))
++
++    phys_addr_t phys_addr = __pfn_to_phys(pfn);
++
++    if (0x40000000 <= phys_addr && phys_addr < 0xc0000000) {
++        if (file->f_flags & O_SYNC)
++            return pgprot_noncached(vma_prot);
++        else
++            return __pgprot_modify(vma_prot, L_PTE_MT_MASK, L_PTE_MT_WRITEALLOC);
++	} else if (!pfn_valid(pfn))
+ 		return pgprot_noncached(vma_prot);
+ 	else if (file->f_flags & O_SYNC)
+ 		return pgprot_writecombine(vma_prot);
